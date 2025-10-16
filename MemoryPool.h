@@ -34,8 +34,8 @@ class HashBucket {
  private:
   /* data */
  public:
-  HashBucket(/* args */);
-  ~HashBucket();
+  HashBucket() = default;
+  ~HashBucket() = default;
   static void initMemoryPool();
   static MemoryPool& getMemortPool(size_t index);
   static void* useMemory(size_t size) {
