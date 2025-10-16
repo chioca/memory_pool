@@ -1,3 +1,5 @@
+#pragma once
+#include <atomic>
 #include <cstddef>
 #include <mutex>
 namespace memoryPool {
@@ -5,14 +7,10 @@ namespace memoryPool {
 #define SLOT_BASE_SIZE 8
 #define MAX_SLOT_SIZE 512
 struct Slot {
-  Slot* next;
+  std::atomic<Slot*> next;
 };
 
 class MemoryPool {
- private:
-  void allocateNewBlock();
-  size_t padPointer(char* p, size_t align);
-
  public:
   MemoryPool(size_t BlockSize = 4096);
   ~MemoryPool();
@@ -21,14 +19,21 @@ class MemoryPool {
   void deallocate(void*);
 
  private:
+  void allocateNewBlock();
+  size_t padPointer(char* p, size_t align);
+
+  // 使用CAS操作进行无锁入队和出队
+  bool pushFreeList(Slot* slot);
+  Slot* popFreeList();
+
+ private:
   size_t BlockSize_;
   size_t SlotSize_;
   Slot* firstBlock_;
   Slot* curSlot_;
-  Slot* freeList_;
+  std::atomic<Slot*> freeList_;
   Slot* lastSlot_;
-  std::mutex mutexForFreeList_;  // 确保多线程下freeList操作的原子性
-  std::mutex mutexForBlock_;     // 避免多线程下重复开辟内存
+  std::mutex mutexForBlock_;  // 避免多线程下重复开辟内存
 };
 class HashBucket {
  private:

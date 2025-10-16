@@ -2,7 +2,13 @@
 
 #include <assert.h>
 namespace memoryPool {
-MemoryPool::MemoryPool(size_t BlockSize) : BlockSize_(BlockSize) {}
+MemoryPool::MemoryPool(size_t BlockSize)
+    : BlockSize_(BlockSize),
+      SlotSize_(0),
+      firstBlock_(nullptr),
+      curSlot_(nullptr),
+      freeList_(nullptr),
+      lastSlot_(nullptr) {}
 MemoryPool::~MemoryPool() {
   Slot *cur = firstBlock_;
   while (cur) {
@@ -17,40 +23,57 @@ void MemoryPool::init(size_t size) {
   SlotSize_ = size;
   firstBlock_ = nullptr;
   curSlot_ = nullptr;
-  freeList_ = nullptr;
+  freeList_.store(nullptr, std::memory_order_relaxed);
   lastSlot_ = nullptr;
+}
+
+bool MemoryPool::pushFreeList(Slot *slot) {
+  while (true) {
+    Slot *OldHead = freeList_.load(std::memory_order_relaxed);
+    slot->next.store(OldHead, std::memory_order_relaxed);
+    if (freeList_.compare_exchange_weak(OldHead, slot,
+                                        std::memory_order_release,
+                                        std::memory_order_relaxed)) {
+      return true;
+    }
+  }
+}
+
+Slot *MemoryPool::popFreeList() {
+  while (true) {
+    Slot *OldHead = freeList_.load(std::memory_order_relaxed);
+    if (OldHead == nullptr) {
+      return nullptr;
+    }
+    Slot *newHead = OldHead->next.load(std::memory_order_relaxed);
+    if (freeList_.compare_exchange_weak(OldHead, newHead,
+                                        std::memory_order_acquire,
+                                        std::memory_order_relaxed)) {
+      return OldHead;
+    }
+  }
 }
 
 void *MemoryPool::allocate() {
   // 优先使用空闲链表中的内存槽
-  if (freeList_ != nullptr) {
-    {
-      std::lock_guard<std::mutex> lock(mutexForFreeList_);
-      if (freeList_ != nullptr) {
-        Slot *temp = freeList_;
-        freeList_ = freeList_->next;
-        return temp;
-      }
-    }
+  Slot *slot = popFreeList();
+  if (slot != nullptr) return slot;
+
+  // 若空闲链表为空 分配新的内存
+  std::lock_guard<std::mutex> lock(mutexForBlock_);
+  if (curSlot_ >= lastSlot_) {
+    allocateNewBlock();
   }
-  Slot *temp;
-  {
-    std::lock_guard<std::mutex> lock(mutexForBlock_);
-    if (curSlot_ >= lastSlot_) {
-      allocateNewBlock();
-    }
-    temp = curSlot_;
-    curSlot_ += SlotSize_ / sizeof(Slot);
-    return temp;
-  }
+  Slot *result = curSlot_;
+  curSlot_ =
+      reinterpret_cast<Slot *>(reinterpret_cast<char *>(curSlot_) + SlotSize_);
+  return result;
 }
 
 void MemoryPool::deallocate(void *ptr) {
-  if (ptr) {
-    std::lock_guard<std::mutex> lock(mutexForFreeList_);
-    reinterpret_cast<Slot *>(ptr)->next = freeList_;
-    freeList_ = reinterpret_cast<Slot *>(ptr);
-  }
+  if (!ptr) return;
+  Slot *slot = static_cast<Slot *>(ptr);
+  pushFreeList(slot);
 }
 
 void MemoryPool::allocateNewBlock() {
