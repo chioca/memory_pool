@@ -60,4 +60,43 @@ void* ThreadCache::fetchFromCentralCache(size_t index) {
   freeListSize_[index] += batchNum;
   return result;
 }
+
+void ThreadCache::returnToCentralCache(void* start, size_t size) {
+  size_t index = SizeClass::getIndex(size);
+  size_t alignedSize = SizeClass::roundUp(size);
+
+  // 计算要归还的内存块数量
+  size_t batchNum = freeListSize_[index];
+  if (batchNum <= 1) return;
+
+  // 保留一部分在TreadCache中
+  size_t keepNum = std::max(batchNum / 4, size_t(1));
+  size_t returnNum = batchNum - keepNum;
+
+  char* current = static_cast<char*>(start);
+  char* splitNode = current;
+  for (size_t i = 0; i < keepNum - 1; i++) {
+    splitNode = reinterpret_cast<char*>(*reinterpret_cast<void**>(splitNode));
+    if (splitNode == nullptr) {
+      returnNum = batchNum - (i + 1);
+      break;
+    }
+  }
+  if (splitNode != nullptr) {
+    // 断开要返回的部分和要保留的部分
+    void* nextNode = *reinterpret_cast<void**>(splitNode);
+    *reinterpret_cast<void**>(splitNode) = nullptr;
+
+    // 更新ThreadCache的空闲链表
+    // 感觉这里不必要更新,freeList[index] 并没后改变
+    freeList_[index] = start;
+
+    // 更新自由链表大小
+    freeListSize_[index] = keepNum;
+    if (returnNum > 0 && nextNode != nullptr) {
+      CentralCache::getInstance().returnRange(nextNode, returnNum * alignedSize,
+                                              index);
+    }
+  }
+}
 }  // namespace memory_pool
