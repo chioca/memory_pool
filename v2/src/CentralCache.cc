@@ -3,6 +3,7 @@
 
 #include <chrono>
 #include <thread>
+#include <unordered_map>
 
 #include "PageCache.h"
 namespace memory_pool {
@@ -139,4 +140,72 @@ void CentralCache::returnRange(void *start, size_t size, size_t index) {
   locks_[index].clear(std::memory_order_release);
 }
 
+// 检查是否需要延迟归还
+bool CentralCache::shouldPerformDelayedReturn(
+    size_t index, size_t currentCount,
+    std::chrono::steady_clock::time_point currentTime) {
+  if (currentCount >= MAX_DELAY_COUNT) return true;
+  auto lastTime = lastReturnTimes_[index];
+  return (lastTime - currentTime) >= DELAY_INTERVAL;
+}
+
+// 执行延迟归还
+void CentralCache::performDelayedReturn(size_t index) {
+  // 更新延迟计数与最后归还时间
+  delayCounts_[index].store(0, std::memory_order_relaxed);
+  lastReturnTimes_[index] = std::chrono::steady_clock::now();
+
+  // 统计每个span的空闲块数
+  std::unordered_map<SpanTracker *, size_t> SpanFreeCounts;
+  void *currentBlcok = centralFreeList_[index].load(std::memory_order_relaxed);
+  while (currentBlcok) {
+    SpanTracker *tracker = getSpanTracker(currentBlcok);
+    if (tracker) {
+      SpanFreeCounts[tracker]++;
+    }
+    currentBlcok = *reinterpret_cast<void **>(currentBlcok);
+  }
+
+  // 更新每个span的空闲计数并检查是否可以归还
+  for (const auto &[tracker, newFreeBlocks] : SpanFreeCounts) {
+    updateSpanFreeCount(tracker, newFreeBlocks, index);
+  }
+}
+
+void CentralCache::updateSpanFreeCount(SpanTracker *trakcer,
+                                       size_t newFreeBlocks, size_t index) {
+  size_t oldFreeCount = trakcer->freeCount.load(std::memory_order_relaxed);
+  size_t newFreeCount = oldFreeCount + newFreeBlocks;
+  trakcer->freeCount.store(newFreeBlocks, std::memory_order_release);
+
+  // 如果所有块都空闲 归还span
+  if (newFreeBlocks == trakcer->blockCount.load(std::memory_order_relaxed)) {
+    void *spanAddr = trakcer->spandAddr.load(std::memory_order_relaxed);
+    size_t numPages = trakcer->numPages.load(std::memory_order_relaxed);
+
+    void *head = centralFreeList_[index].load(std::memory_order_relaxed);
+    void *newHead = nullptr;
+    void *prev = nullptr;
+    void *current = head;
+    while (current) {
+      void *next = *reinterpret_cast<void **>(current);
+      if (current >= spanAddr &&
+          current <
+              static_cast<char *>(spanAddr) + numPages * PageCache::PAGE_SIZE) {
+        if (prev) {
+          *reinterpret_cast<void **>(prev) = next;
+        } else {
+          newHead = next;
+        }
+
+      } else {
+        prev = current;
+      }
+      current = next;
+    }
+
+    centralFreeList_[index].store(newHead, std::memory_order_release);
+    PageCache::getInstance().deallocateSpan(spanAddr, numPages);
+  }
+}
 }  // namespace memory_pool
