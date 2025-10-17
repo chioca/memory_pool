@@ -1,4 +1,6 @@
 #include "ThreadCache.h"
+
+#include "CentralCache.h"
 namespace memory_pool {
 void* ThreadCache::allocate(size_t size) {
   if (size == 0) {
@@ -40,5 +42,22 @@ void ThreadCache::deallocate(void* ptr, size_t size) {
 bool ThreadCache::shouldReturnToCentralCache(size_t index) {
   return (freeListSize_[index] > THREAD_HOLD);
 }
-void* ThreadCache::fetchFromCentralCache(size_t size) {}
+void* ThreadCache::fetchFromCentralCache(size_t index) {
+  // 从中心缓存批量获取内存
+  void* start = CentralCache::getInstance().fetchRange(index);
+  if (!start) return nullptr;
+
+  // 取一个返回, 其余的放回空闲链表
+  void* result = start;
+  freeList_[index] = *reinterpret_cast<void**>(start);
+  size_t batchNum = 0;
+  void* current = start;
+
+  while (current != nullptr) {
+    batchNum++;
+    current = *reinterpret_cast<void**>(current);
+  }
+  freeListSize_[index] += batchNum;
+  return result;
+}
 }  // namespace memory_pool
