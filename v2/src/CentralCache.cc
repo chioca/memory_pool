@@ -98,4 +98,45 @@ void *CentralCache::fetchRange(size_t index) {
   return result;
 }
 
+void CentralCache::returnRange(void *start, size_t size, size_t index) {
+  if (!start || index >= FREE_LIST_SIZE) {
+    return;
+  }
+
+  size_t blockSize = (index + 1) * ALIGNMENT;
+  size_t blockCount = size / blockSize;
+  while (locks_[index].test_and_set(std::memory_order_acquire)) {
+    std::this_thread::yield();
+  }
+
+  try {
+    // 将归还的链表插入中心缓存
+    void *end = start;
+    size_t count = 1;
+    while (*reinterpret_cast<void **>(end) != nullptr && count < blockCount) {
+      count++;
+      end = *reinterpret_cast<void **>(end);
+    }
+    void *current = centralFreeList_[index].load(std::memory_order_relaxed);
+    *reinterpret_cast<void **>(end) = current;
+    centralFreeList_[index].store(start, std::memory_order_release);
+
+    // 更新延迟计数
+
+    size_t currentCount =
+        delayCounts_[index].fetch_add(1, std::memory_order_relaxed);
+    auto currentTime = std::chrono::steady_clock::now();
+
+    // 检查是否要进行延迟归还
+    if (shouldPerformDelayedReturn(index, currentCount, currentTime)) {
+      performDelayedReturn(index);
+    }
+
+  } catch (...) {
+    locks_[index].clear(std::memory_order_release);
+    throw;
+  }
+  locks_[index].clear(std::memory_order_release);
+}
+
 }  // namespace memory_pool
