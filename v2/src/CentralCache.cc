@@ -176,7 +176,7 @@ void CentralCache::updateSpanFreeCount(SpanTracker *trakcer,
                                        size_t newFreeBlocks, size_t index) {
   size_t oldFreeCount = trakcer->freeCount.load(std::memory_order_relaxed);
   size_t newFreeCount = oldFreeCount + newFreeBlocks;
-  trakcer->freeCount.store(newFreeBlocks, std::memory_order_release);
+  trakcer->freeCount.store(newFreeCount, std::memory_order_release);
 
   // 如果所有块都空闲 归还span
   if (newFreeBlocks == trakcer->blockCount.load(std::memory_order_relaxed)) {
@@ -189,12 +189,13 @@ void CentralCache::updateSpanFreeCount(SpanTracker *trakcer,
     void *current = head;
     while (current) {
       void *next = *reinterpret_cast<void **>(current);
+      // 如果current在目标span内 则需要删除
       if (current >= spanAddr &&
           current <
               static_cast<char *>(spanAddr) + numPages * PageCache::PAGE_SIZE) {
-        if (prev) {
+        if (prev) {  // current存在前驱块 删除current
           *reinterpret_cast<void **>(prev) = next;
-        } else {
+        } else {  // current为第一块 直接更新链头
           newHead = next;
         }
 
