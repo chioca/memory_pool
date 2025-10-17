@@ -209,4 +209,27 @@ void CentralCache::updateSpanFreeCount(SpanTracker *trakcer,
     PageCache::getInstance().deallocateSpan(spanAddr, numPages);
   }
 }
+
+void *CentralCache::fetchFromPageCache(size_t size) {
+  size_t numPages = (size + PageCache::PAGE_SIZE - 1) / PageCache::PAGE_SIZE;
+  if (size <= SPAN_PAGES * PageCache::PAGE_SIZE) {
+    // 小于32k 固定分配8页
+    return PageCache::getInstance().allocateSpan(SPAN_PAGES);
+  } else {
+    // 大于32k 按需分配
+    return PageCache::getInstance().allocateSpan(numPages);
+  }
+}
+
+SpanTracker *CentralCache::getSpanTracker(void *blockAddr) {
+  for (size_t i = 0; i < spanCount_.load(std::memory_order_relaxed); i++) {
+    void *addr = spanTrackers_[i].spandAddr.load(std::memory_order_relaxed);
+    size_t numPages = spanTrackers_[i].numPages.load(std::memory_order_relaxed);
+    if (blockAddr >= addr && blockAddr < static_cast<char *>(addr) +
+                                             numPages * PageCache::PAGE_SIZE) {
+      return &spanTrackers_[i];
+    }
+  }
+  return nullptr;
+}
 }  // namespace memory_pool
