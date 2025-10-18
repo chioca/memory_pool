@@ -27,7 +27,9 @@ class PageCache {
     size_t numPages;
     Span* next;
   };
+  // 按页数管理空闲span 不同页数对应不同span链表
   std::map<size_t, Span*> freeSpans_;
+  // 页号到span的映射，用于回收
   std::map<void*, Span*> spanMap_;
   std::mutex mutex_;
 };
