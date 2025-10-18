@@ -20,8 +20,6 @@ class ThreadCache {
   std::array<size_t, FREE_LIST_SIZE> freeListSize_;
 
  public:
-  ThreadCache() = default;
-
   static ThreadCache* getInstance() {
     static thread_local ThreadCache instance;
     return &instance;

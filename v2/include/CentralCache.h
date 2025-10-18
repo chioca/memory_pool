@@ -56,8 +56,4 @@ class CentralCache {
                            size_t index);
 };
 
-CentralCache::CentralCache(/* args */) {}
-
-CentralCache::~CentralCache() {}
-
 }  // namespace memory_pool
