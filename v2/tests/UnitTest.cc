@@ -1,9 +1,12 @@
+#include <algorithm>
+#include <atomic>
 #include <cassert>
 #include <iostream>
+#include <random>
 #include <thread>
 #include <vector>
 
-#include "MemoryPool.h"
+#include "../include/MemoryPool.h"
 using namespace memory_pool;
 
 // 基础分配测试
@@ -123,8 +126,36 @@ void testEdgeCases() {
   std::cout << "Edge cases test passed!" << std::endl;
 }
 
+// 压力测试
+void testStress() {
+  std::cout << "Running stress test..." << std::endl;
+
+  const int NUM_ITERATIONS = 10000;
+  std::vector<std::pair<void*, size_t>> allocations;
+  allocations.reserve(NUM_ITERATIONS);
+
+  for (int i = 0; i < NUM_ITERATIONS; ++i) {
+    size_t size = (rand() % 1024 + 1) * 8;
+    void* ptr = MemoryPool::allocate(size);
+    assert(ptr != nullptr);
+    allocations.push_back({ptr, size});
+  }
+
+  // 随机顺序释放
+  std::random_device rd;
+  std::mt19937 g(rd());
+  std::shuffle(allocations.begin(), allocations.end(), g);
+  for (const auto& alloc : allocations) {
+    MemoryPool::deallocate(alloc.first, alloc.second);
+  }
+
+  std::cout << "Stress test passed!" << std::endl;
+}
+
 int main() {
   testBasicAllocation();
   testMemoryWriting();
   testMultiThreading();
+  testEdgeCases();
+  testStress();
 }

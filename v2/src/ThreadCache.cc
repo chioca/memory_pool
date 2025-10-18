@@ -10,6 +10,7 @@ void* ThreadCache::allocate(size_t size) {
     return malloc(size);
   }
   size_t index = SizeClass::getIndex(size);
+  if (freeListSize_[index] == 0) return fetchFromCentralCache(index);
   freeListSize_[index]--;
   void* ptr = freeList_[index];
   // 检查线程本地空闲链表, 若不为空, 则直接分配
