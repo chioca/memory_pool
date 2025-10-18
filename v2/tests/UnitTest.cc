@@ -1,6 +1,7 @@
 #include <cassert>
 #include <iostream>
 #include <thread>
+#include <vector>
 
 #include "MemoryPool.h"
 using namespace memory_pool;
@@ -44,4 +45,54 @@ void testMemoryWriting() {
   MemoryPool::deallocate(ptr, size);
   std::cout << "Memory writing test passed!" << std::endl;
 }
+
+// 多线程测试
+void testMultiThreading() {
+  std::cout << "Running multi-threading test..." << std::endl;
+
+  const int NUM_THREADS = 4;
+  const int ALLOCS_PER_THREAD = 1000;
+  std::atomic<bool> has_error{false};
+
+  auto threadFunc = [&has_error]() {
+    try {
+      std::vector<std::pair<void*, size_t>> allocations;
+      allocations.reserve(ALLOCS_PER_THREAD);
+
+      for (size_t i = 0; i < ALLOCS_PER_THREAD && !has_error; i++) {
+        size_t size = (rand() % 256 + 1) * 8;
+        void* ptr = MemoryPool::allocate(size);
+        if (!ptr) {
+          std::cerr << "Allocation failed for size: " << size << std::endl;
+          has_error = true;
+          break;
+        }
+        allocations.push_back({ptr, size});
+        if (rand() % 2 && !allocations.empty()) {
+          size_t index = rand() % allocations.size();
+          MemoryPool::deallocate(allocations[index].first,
+                                 allocations[index].second);
+          allocations.erase(allocations.begin() + index);
+        }
+      }
+      for (const auto& alloc : allocations) {
+        MemoryPool::deallocate(alloc.first, alloc.second);
+      }
+
+    } catch (const std::exception& e) {
+      std::cerr << " Thread exception:" << e.what() << '\n';
+      has_error = true;
+    }
+  };
+  std::vector<std::thread> threads;
+  for (size_t i = 0; i < NUM_THREADS; i++) {
+    threads.emplace_back(threadFunc);
+  }
+  for (auto& thread : threads) {
+    thread.join();
+  }
+
+  std::cout << "Multi-threading test passed!" << std::endl;
+}
+
 int main() { testBasicAllocation(); }
