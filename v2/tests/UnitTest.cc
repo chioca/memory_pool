@@ -95,4 +95,36 @@ void testMultiThreading() {
   std::cout << "Multi-threading test passed!" << std::endl;
 }
 
-int main() { testBasicAllocation(); }
+// 边界测试
+void testEdgeCases() {
+  std::cout << "Running edge cases test..." << std::endl;
+
+  // 测试0大小分配
+  void* ptr1 = MemoryPool::allocate(0);
+  assert(ptr1 != nullptr);
+  MemoryPool::deallocate(ptr1, 0);
+
+  // 测试最小对齐大小
+  void* ptr2 = MemoryPool::allocate(1);
+  assert(ptr2 != nullptr);
+  assert((reinterpret_cast<uintptr_t>(ptr2) & (ALIGNMENT - 1)) == 0);
+  MemoryPool::deallocate(ptr2, 1);
+
+  // 测试最大大小边界
+  void* ptr3 = MemoryPool::allocate(MAX_BYTES);
+  assert(ptr3 != nullptr);
+  MemoryPool::deallocate(ptr3, MAX_BYTES);
+
+  // 测试超过最大大小
+  void* ptr4 = MemoryPool::allocate(MAX_BYTES + 1);
+  assert(ptr4 != nullptr);
+  MemoryPool::deallocate(ptr4, MAX_BYTES + 1);
+
+  std::cout << "Edge cases test passed!" << std::endl;
+}
+
+int main() {
+  testBasicAllocation();
+  testMemoryWriting();
+  testMultiThreading();
+}
