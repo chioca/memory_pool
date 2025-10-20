@@ -14,6 +14,8 @@ class ThreadCache {
   size_t getBatchNum(size_t size);
   // 判断是否需要归还内存
   bool shouldReturnToCentralCache(size_t index);
+  // 计算获取内存块的数量
+  size_t getBatchNum(size_t size);
 
  private:
   std::array<void*, FREE_LIST_SIZE> freeList_;

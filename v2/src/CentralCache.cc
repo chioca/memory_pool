@@ -231,4 +231,8 @@ SpanTracker *CentralCache::getSpanTracker(void *blockAddr) {
   }
   return nullptr;
 }
+
+// TODO
+void *CentralCache::fetchRange(size_t index, size_t batchNum) {}
+
 }  // namespace memory_pool

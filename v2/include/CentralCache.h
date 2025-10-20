@@ -19,6 +19,7 @@ class CentralCache {
     return instance;
   }
   void* fetchRange(size_t index);
+  void* fetchRange(size_t index, size_t batchNum);
   void returnRange(void* statr, size_t size, size_t index);
 
  private:
