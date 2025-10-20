@@ -1,4 +1,3 @@
-#pragma once
 #include "CentralCache.h"
 
 #include <chrono>

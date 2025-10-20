@@ -10,7 +10,10 @@ void* ThreadCache::allocate(size_t size) {
     return malloc(size);
   }
   size_t index = SizeClass::getIndex(size);
-  if (freeListSize_[index] == 0) return fetchFromCentralCache(index);
+  // if (freeListSize_[index] == 0) return fetchFromCentralCache(index);
+  // 这里在没有判断分配成功的情况下先自减了数据
+  // 如果没有分配成功 会从中心缓存取数据
+  // 会返回fetchFromCentralCache 这里会补回这里的一次自减
   freeListSize_[index]--;
   void* ptr = freeList_[index];
   // 检查线程本地空闲链表, 若不为空, 则直接分配
